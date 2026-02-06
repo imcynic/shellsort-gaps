@@ -1,0 +1,370 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[margin=1in]{geometry}
+\usepackage{caption}
+\usepackage{subcaption}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny,
+  xleftmargin=2em
+}
+
+\title{An Improved Gap Sequence for Shellsort\\via Evolutionary Optimization}
+
+\author{
+  Bryan Banner\\
+  \texttt{Imzcynic@gmail.com}
+}
+
+\date{January 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present an empirically optimized gap sequence for Shellsort that achieves \textbf{0.52\% fewer comparisons} than the widely-used Ciura sequence across array sizes from 1 million to 8 million elements. The improvement is statistically significant ($p < 0.001$) at all tested sizes and scales with array size, reaching 0.57\% at $N=8\text{M}$. The sequence was discovered through evolutionary search over 4 parallel runs with diverse random seeds, targeting simultaneous optimization across multiple array sizes. We provide full reproducibility details including exact sequences, statistical analysis, and verification data.
+\end{abstract}
+
+\section{Introduction}
+
+Shellsort \cite{shell1959} is a comparison-based sorting algorithm that generalizes insertion sort by allowing exchanges of elements that are far apart. The algorithm performs multiple passes over the data, each using a different ``gap'' value that determines which elements are compared. The sequence of gaps used---called the \emph{gap sequence}---critically determines the algorithm's performance.
+
+The Ciura sequence \cite{ciura2001} is widely regarded as the best empirically-optimized gap sequence for minimizing comparisons on random data. It was discovered through exhaustive search for small arrays and extended via a $2.25\times$ multiplicative rule for larger gaps:
+\[
+\text{Ciura: } [1, 4, 10, 23, 57, 132, 301, 701, 1577, 3548, 7983, \ldots]
+\]
+
+Despite decades of research, no published sequence has demonstrably improved upon Ciura for general random permutations across multiple array sizes simultaneously. We present a new sequence discovered through evolutionary optimization that achieves consistent improvement over Ciura at all tested sizes.
+
+\section{Methodology}
+
+\subsection{Comparison Counting}
+
+We count comparisons according to the standard definition: one comparison is counted each time the condition $A[j-\text{gap}] > \text{temp}$ is evaluated in the inner loop of gapped insertion sort. Loop bounds, element moves, and index arithmetic are not counted.
+
+\subsection{Test Data}
+
+Permutations were generated using the Fisher-Yates shuffle with the xoshiro256** pseudorandom number generator, seeded via splitmix64 from master seed \texttt{0xC0FFEE1234}. Table~\ref{tab:datasets} shows the dataset configuration.
+
+\begin{table}[h]
+\centering
+\caption{Test dataset configuration}
+\label{tab:datasets}
+\begin{tabular}{@{}rrl@{}}
+\toprule
+Array Size ($N$) & Trials & Purpose \\
+\midrule
+1,000,000 & 100 & Validation \\
+2,000,000 & 50 & Validation \\
+4,000,000 & 25 & Validation \\
+8,000,000 & 10 & Validation \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Critical:} All sequences were tested on identical pre-generated permutations, enabling paired statistical comparison.
+
+\subsection{Evolutionary Search}
+
+We conducted 4 parallel evolutionary searches with the following configuration:
+\begin{itemize}
+    \item \textbf{Population:} 100 individuals
+    \item \textbf{Generations:} Up to 400 (early stopping on plateau)
+    \item \textbf{Mutation rate:} 30--35\%
+    \item \textbf{Mutation operators:} Insert gap, delete gap, modify gap value, scale all gaps, small perturbation
+    \item \textbf{Crossover:} Merge gaps from two parents
+    \item \textbf{Selection:} Tournament with elitism (top 8 preserved)
+    \item \textbf{Fitness:} Mean comparisons across all 4 target sizes
+    \item \textbf{Plateau detection:} Auto-stop after 50 generations without improvement
+\end{itemize}
+
+Each run used a different random seed: \texttt{0xCAFEBABE}, \texttt{0x8BADF00D}, \texttt{0xDEADBEEF}, \texttt{0x1337C0DE}.
+
+\subsection{System Configuration}
+
+Benchmarks were run on an AMD Ryzen 9 9950X3D (16 cores, 5.53 GHz) with 128 GB RAM, running Linux 6.18. Code was compiled with GCC 15.2 using \texttt{-O3 -march=native -fopenmp}. Trials were parallelized across 16 threads.
+
+\section{Results}
+
+\subsection{Evolved Sequence}
+
+The best sequence was discovered by Run 4 (seed \texttt{0x1337C0DE}) at generation 186. The base sequence (18 gaps) is:
+
+\begin{center}
+\texttt{[1, 4, 10, 23, 57, 132, 301, 701, 1577, 3524, 7705, 17961,}\\
+\texttt{40056, 94681, 199137, 460316, 1035711, 3236462]}
+\end{center}
+
+For arrays where $N > 3236462$, additional gaps are computed using the $2.25\times$ extension rule. For $N = 8\text{M}$, this adds gap 7282039, yielding 19 total gaps. Both Ciura and the evolved sequence use the same extension policy.
+
+\subsection{Statistical Results}
+
+Table~\ref{tab:results} presents the detailed comparison between Ciura and the evolved sequence.
+
+\begin{table}[h]
+\centering
+\caption{Comparison counts: Ciura vs.\ Evolved sequence}
+\label{tab:results}
+\begin{tabular}{@{}rrrrrrr@{}}
+\toprule
+$N$ & Trials & Ciura Mean & Evolved Mean & Improvement & $t$-stat & $p$-value \\
+\midrule
+1M & 100 & 31,944,358 & 31,825,784 & +0.37\% & 32.24 & $<0.001$ \\
+2M & 50 & 67,831,819 & 67,563,913 & +0.40\% & 23.97 & $<0.001$ \\
+4M & 25 & 143,478,037 & 142,782,469 & +0.48\% & 29.99 & $<0.001$ \\
+8M & 10 & 302,706,309 & 300,974,436 & +0.57\% & 24.33 & $<0.001$ \\
+\midrule
+\textbf{Total} & & \textbf{545,960,523} & \textbf{543,146,602} & \textbf{+0.52\%} & & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+All $p$-values are from paired $t$-tests, which are valid because each sequence was tested on identical permutations.
+
+\subsection{Detailed Statistics}
+
+Table~\ref{tab:detailed} shows the full statistical breakdown including standard deviations and 95\% confidence intervals.
+
+\begin{table}[h]
+\centering
+\caption{Detailed statistics for each array size}
+\label{tab:detailed}
+\begin{tabular}{@{}llrrrr@{}}
+\toprule
+$N$ & Sequence & Mean & Std Dev & Std Err & 95\% CI \\
+\midrule
+\multirow{2}{*}{1M} & Ciura & 31,944,358 & 30,401 & 3,040 & [31,938,400, 31,950,317] \\
+ & Evolved & 31,825,784 & 19,630 & 1,963 & [31,821,936, 31,829,631] \\
+\midrule
+\multirow{2}{*}{2M} & Ciura & 67,831,819 & 78,324 & 11,077 & [67,810,109, 67,853,529] \\
+ & Evolved & 67,563,913 & 35,077 & 4,961 & [67,554,191, 67,573,636] \\
+\midrule
+\multirow{2}{*}{4M} & Ciura & 143,478,037 & 114,672 & 22,934 & [143,431,136, 143,524,938] \\
+ & Evolved & 142,782,469 & 49,246 & 9,849 & [142,762,327, 142,802,611] \\
+\midrule
+\multirow{2}{*}{8M} & Ciura & 302,706,309 & 199,409 & 63,059 & [302,574,327, 302,838,291] \\
+ & Evolved & 300,974,436 & 94,729 & 29,956 & [300,911,738, 301,037,134] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Note that the 95\% confidence intervals do not overlap at any size, providing additional evidence of a true difference.
+
+\subsection{Comparison with All Baselines}
+
+Table~\ref{tab:baselines} compares the evolved sequence against all major published gap sequences.
+
+\begin{table}[h]
+\centering
+\caption{Aggregate comparison counts across all baselines}
+\label{tab:baselines}
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+Sequence & $N$=1M & $N$=2M & $N$=4M & $N$=8M & vs.\ Evolved \\
+\midrule
+\textbf{Evolved} & 31,825,784 & 67,563,913 & 142,782,469 & 300,974,436 & --- \\
+Ciura & 31,944,358 & 67,831,819 & 143,478,037 & 302,706,309 & +0.52\% \\
+Ciura-Ext & 32,014,238 & 67,914,866 & 143,697,029 & 302,960,697 & +0.63\% \\
+Tokuda & 32,062,404 & 67,981,143 & 143,670,312 & 303,004,602 & +0.65\% \\
+Lee-2021 & 32,656,974 & 69,187,805 & 146,063,016 & 307,740,628 & +2.25\% \\
+Skean-2023 & 32,416,825 & 68,906,644 & 145,982,001 & 308,284,691 & +2.24\% \\
+Sedgewick-86 & 40,376,968 & 86,276,102 & 184,809,982 & 392,841,628 & +22.88\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The evolved sequence outperforms all tested baselines at all sizes.
+
+\subsection{Gap-by-Gap Analysis}
+
+Table~\ref{tab:gaps} compares the base sequences (before $2.25\times$ extension). Both sequences share the first 9 gaps from Ciura's original empirical work.
+
+\begin{table}[h]
+\centering
+\caption{Gap-by-gap comparison of base sequences (positions 0--17)}
+\label{tab:gaps}
+\begin{tabular}{@{}rrrl@{}}
+\toprule
+Position & Ciura (ext.) & Evolved & Change \\
+\midrule
+0--8 & 1, 4, 10, 23, 57, 132, 301, 701, 1577 & (same) & --- \\
+9 & 3548 & 3524 & $-0.7\%$ \\
+10 & 7983 & 7705 & $-3.5\%$ \\
+11 & 17961 & 17961 & --- \\
+12 & 40412 & 40056 & $-0.9\%$ \\
+13 & 90927 & 94681 & $+4.1\%$ \\
+14 & 204585 & 199137 & $-2.7\%$ \\
+15--16 & 460316, 1035711 & (same) & --- \\
+17 & 2330349 & 3236462 & $+38.9\%$ \\
+\midrule
+\multicolumn{4}{l}{\textit{For $N > $ last gap, extend with $h_{k+1} = \lfloor 2.25 \cdot h_k \rfloor$}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Key modifications occur in positions 9--14 and 17. The evolved sequence uses a significantly larger gap at position 17, which affects the extension for large $N$.
+
+\subsection{Convergent Evolution}
+
+All four independent runs converged to similar improvements (Table~\ref{tab:runs}), suggesting the optimum is robust.
+
+\begin{table}[h]
+\centering
+\caption{Results from 4 independent evolutionary runs}
+\label{tab:runs}
+\begin{tabular}{@{}llrr@{}}
+\toprule
+Run & Seed & Generations & Improvement \\
+\midrule
+1 & \texttt{0xCAFEBABE} & 249 & +0.51\% \\
+2 & \texttt{0x8BADF00D} & 301 & +0.52\% \\
+3 & \texttt{0xDEADBEEF} & 189 & +0.45\% \\
+\textbf{4} & \texttt{0x1337C0DE} & 186 & \textbf{+0.54\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Discussion}
+
+\subsection{Nature of Improvement}
+
+The evolved sequence achieves improvement through specific numerical adjustments to gap values in the range 3,000--200,000, plus a significantly larger final gap. No simple formula or ratio rule generates this sequence---the improvements come from empirical fine-tuning.
+
+\subsection{Scaling Behavior}
+
+The improvement increases with array size: +0.37\% at $N$=1M, +0.40\% at $N$=2M, +0.48\% at $N$=4M, and +0.57\% at $N$=8M. This suggests the evolved sequence may provide even larger benefits for arrays exceeding 8 million elements.
+
+\subsection{Statistical Validity}
+
+Our analysis satisfies rigorous statistical standards:
+\begin{enumerate}
+    \item \textbf{Paired testing:} Same permutations used for all sequences
+    \item \textbf{Multiple comparison correction:} With 4 tests, Bonferroni requires $p < 0.0125$; all our $p$-values are $< 0.001$
+    \item \textbf{Non-overlapping CIs:} 95\% confidence intervals do not overlap at any size
+    \item \textbf{Independent replication:} 4 runs with different seeds found similar improvements
+\end{enumerate}
+
+\subsection{Limitations}
+
+\begin{enumerate}
+    \item \textbf{Random permutations only:} Real-world data may exhibit patterns (partial sorting, duplicates) not captured by random permutations.
+    \item \textbf{Comparison metric:} We optimized for comparison count, not wall-clock time. Cache effects and branch prediction may differ.
+    \item \textbf{Modest magnitude:} While statistically significant, a 0.52\% improvement may not be practically significant for all applications.
+\end{enumerate}
+
+\section{Conclusion}
+
+We have demonstrated a gap sequence that achieves statistically significant improvement over the Ciura sequence across all tested array sizes from 1M to 8M elements. The improvement is:
+
+\begin{itemize}
+    \item Consistent across all 4 array sizes
+    \item Statistically significant at $p < 0.001$ for all sizes
+    \item Increasing with array size (larger arrays benefit more)
+    \item Independently discovered by multiple search runs
+    \item Fully reproducible
+\end{itemize}
+
+The evolved base sequence:
+\begin{center}
+\texttt{[1, 4, 10, 23, 57, 132, 301, 701, 1577, 3524, 7705, 17961,}\\
+\texttt{40056, 94681, 199137, 460316, 1035711, 3236462]}
+\end{center}
+
+\noindent with $2.25\times$ extension for larger $N$, is recommended for applications where minimizing comparisons is critical, particularly for large arrays.
+
+\section*{Data Availability}
+
+Source code and benchmark data are available at: \url{https://github.com/imcynic/shellsort-evolved}
+
+Archived version with DOI: \url{https://doi.org/10.5281/zenodo.18281131}
+
+MD5 checksums for permutation files:
+\begin{verbatim}
+5a1a09f6ac858ae6456107f324be3cbd  perm_1000000.bin
+87df9e2d163b63c69b9e81b82ba8cfd3  perm_2000000.bin
+18fb354d7fc10f5ade5cd5a444657415  perm_4000000.bin
+a22416a2bea3a63b1322a2e89eb05d5f  perm_8000000.bin
+\end{verbatim}
+
+\begin{thebibliography}{10}
+
+\bibitem{ciura2001}
+M.~Ciura.
+\newblock Best increments for the average case of {S}hellsort.
+\newblock In \emph{13th International Symposium on Fundamentals of Computation
+  Theory}, pages 106--117, 2001.
+
+\bibitem{lee2021}
+K.~Lee.
+\newblock Empirically improved {T}okuda gap sequence in {S}hellsort.
+\newblock \emph{arXiv preprint arXiv:2112.08232}, 2021.
+
+\bibitem{sedgewick1986}
+R.~Sedgewick.
+\newblock A new upper bound for {S}hellsort.
+\newblock \emph{Journal of Algorithms}, 7(2):159--173, 1986.
+
+\bibitem{shell1959}
+D.~L. Shell.
+\newblock A high-speed sorting procedure.
+\newblock \emph{Communications of the ACM}, 2(7):30--32, 1959.
+
+\bibitem{skean2023}
+O.~Skean, R.~Ehrenborg, and M.~Readdy.
+\newblock A computational study of {S}hellsort.
+\newblock \emph{arXiv preprint arXiv:2301.10303}, 2023.
+
+\bibitem{tokuda1992}
+N.~Tokuda.
+\newblock An improved {S}hellsort.
+\newblock In \emph{IFIP Transactions A: Computer Science and Technology}, pages
+  449--457, 1992.
+
+\end{thebibliography}
+
+\appendix
+
+\section{Implementation}
+
+\begin{lstlisting}[language=C,caption={C implementation of evolved sequence}]
+static const uint64_t EVOLVED_BASE[] = {
+    1, 4, 10, 23, 57, 132, 301, 701,
+    1577, 3524, 7705, 17961, 40056, 94681,
+    199137, 460316, 1035711, 3236462
+};
+static const size_t EVOLVED_BASE_LEN = 18;
+
+// Extension rule (same as Ciura): for gaps beyond
+// the base sequence, compute h_{k+1} = floor(2.25 * h_k)
+// Example extensions:
+// 3236462 * 2.25 = 7282039   (used for N up to 8M)
+// 7282039 * 2.25 = 16384588  (used for N up to 16M)
+\end{lstlisting}
+
+\section{Baseline Definitions}
+
+\textbf{Ciura (2001):} Base $[1, 4, 10, 23, 57, 132, 301, 701]$, extended with $h_k = \lfloor 2.25 \cdot h_{k-1} \rfloor$
+
+\textbf{Tokuda (1992):} $h_k = \lceil (9^k - 4^k) / (5 \cdot 4^{k-1}) \rceil$
+
+\textbf{Lee (2021):} $\gamma = 2.243609061420001$, $h_k = \lfloor (\gamma^k - 1) / (\gamma - 1) \rfloor$
+
+\textbf{Skean et al.\ (2023):} $h_k = \lfloor 4.0816 \cdot 8.5714^{k/2.2449} \rfloor$ (gap 1 prepended)
+
+\textbf{Sedgewick (1986):} $h_0 = 1$, $h_k = 4^k + 3 \cdot 2^{k-1} + 1$ for $k \geq 1$
+
+\end{document}
